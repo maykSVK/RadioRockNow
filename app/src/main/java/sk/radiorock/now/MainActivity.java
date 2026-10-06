@@ -9,10 +9,13 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+
 public class MainActivity extends Activity implements NowPlayingMonitor.Listener {
     private TextView songView;
     private TextView artistView;
     private TextView infoView;
+    private SwipeRefreshLayout swipe;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -33,10 +36,17 @@ public class MainActivity extends Activity implements NowPlayingMonitor.Listener
 
         ScrollView sv = new ScrollView(this);
         sv.addView(infoView);
+        
+        swipe = new SwipeRefreshLayout(this);
+        swipe.addView(sv);
+        swipe.setOnRefreshListener(() -> {
+            NowPlayingMonitor.get().refresh();
+        });
+
         root.addView(head);
         root.addView(songView);
         root.addView(artistView);
-        root.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1f));
+        root.addView(swipe, new LinearLayout.LayoutParams(-1, 0, 1f));
         root.addView(hint);
         setContentView(root);
     }
@@ -65,6 +75,7 @@ public class MainActivity extends Activity implements NowPlayingMonitor.Listener
     @Override
     public void onTrackChanged(TrackInfo t) {
         runOnUiThread(() -> {
+            if (swipe != null) swipe.setRefreshing(false);
             songView.setText(t.song);
             artistView.setText(t.artist);
             StringBuilder sb = new StringBuilder();

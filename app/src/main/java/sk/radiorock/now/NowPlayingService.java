@@ -59,10 +59,20 @@ public class NowPlayingService extends MediaBrowserService implements NowPlaying
     public void onCreate() {
         super.onCreate();
         session = new MediaSession(this, "RadioRockNow");
-        session.setCallback(new MediaSession.Callback() { });
+        session.setCallback(new MediaSession.Callback() {
+            @Override
+            public void onCustomAction(String action, Bundle extras) {
+                if ("REFRESH".equals(action)) {
+                    NowPlayingMonitor.get().refresh();
+                }
+            }
+        });
+        PlaybackState.CustomAction refreshAction = new PlaybackState.CustomAction.Builder(
+                "REFRESH", "Obnoviť", android.R.drawable.ic_popup_sync).build();
         session.setPlaybackState(new PlaybackState.Builder()
                 .setState(PlaybackState.STATE_PLAYING, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 0f)
                 .setActions(0)
+                .addCustomAction(refreshAction)
                 .build());
         fallbackArt = makeFallbackArt();
         session.setMetadata(new MediaMetadata.Builder()

@@ -81,4 +81,22 @@ final class NowPlayingMonitor implements IcyReader.Listener {
     private void notifyAllListeners(TrackInfo t) {
         for (Listener l : listeners) l.onTrackChanged(t);
     }
+
+    synchronized void refresh() {
+        if (current != null) {
+            TrackInfo t = new TrackInfo(current.song, current.artist);
+            current = t;
+            notifyAllListeners(t);
+            executor.execute(() -> {
+                try {
+                    TriviaRepository.fill(t);
+                } catch (Throwable e) {
+                    t.log("Chyba: " + e);
+                } finally {
+                    t.triviaDone = true;
+                }
+                if (current == t) notifyAllListeners(t);
+            });
+        }
+    }
 }
