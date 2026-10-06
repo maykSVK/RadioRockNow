@@ -96,16 +96,26 @@ final class TriviaRepository {
     // ---------------------------------------------------------------- MusicBrainz
 
     private static void musicBrainz(TrackInfo t, Data d) throws Exception {
-        String q = "recording:\"" + esc(t.song) + "\" AND artist:\"" + esc(t.artist) + "\"";
+        String song = clean(t.song);
+        String artist = clean(t.artist);
+        String q = "recording:\"" + esc(song) + "\" AND artist:\"" + esc(artist) + "\"";
         JSONObject r = mb("recording/?fmt=json&limit=15&query=" + enc(q));
         JSONArray recs = r.optJSONArray("recordings");
+        
         if (recs == null || recs.length() == 0 || recs.getJSONObject(0).optInt("score", 0) < 70) {
+            // Skúsime vyhľadávanie bez úvodzoviek (menej striktné)
+            q = "recording:(" + esc(song) + ") AND artist:(" + esc(artist) + ")";
+            r = mb("recording/?fmt=json&limit=15&query=" + enc(q));
+            recs = r.optJSONArray("recordings");
+        }
+
+        if (recs == null || recs.length() == 0 || recs.getJSONObject(0).optInt("score", 0) < 60) {
             t.log("MusicBrainz: skladba nenájdená");
             return;
         }
         for (int i = 0; i < recs.length(); i++) {
             JSONObject c = recs.getJSONObject(i);
-            if (c.optInt("score", 0) < 90) continue;
+            if (c.optInt("score", 0) < 60) continue;
             String fr = c.optString("first-release-date", "");
             if (fr.length() >= 4 && (d.year == null || fr.substring(0, 4).compareTo(d.year) < 0)) {
                 d.year = fr.substring(0, 4);
@@ -115,7 +125,7 @@ final class TriviaRepository {
         String artistId = null;
         for (int i = 0; i < recs.length(); i++) {
             JSONObject c = recs.getJSONObject(i);
-            if (c.optInt("score", 0) < 90) continue;
+            if (c.optInt("score", 0) < 60) continue;
             if (artistId == null) {
                 JSONArray credit = c.optJSONArray("artist-credit");
                 if (credit != null && credit.length() > 0) {
@@ -172,19 +182,25 @@ final class TriviaRepository {
     // ---------------------------------------------------------------- iTunes (záloha)
 
     private static void itunes(TrackInfo t, Data d) throws Exception {
+        String song = clean(t.song);
+        String artist = clean(t.artist);
         JSONObject r = getJson("https://itunes.apple.com/search?media=music&entity=song&limit=15&term="
-                + enc(t.artist + " " + t.song));
+                + enc(artist + " " + song));
         JSONArray res = r.optJSONArray("results");
         if (res == null) return;
-        String na = norm(t.artist);
-        String ns = norm(t.song);
+        String na = norm(artist);
+        String ns = norm(song);
         String bestDate = null;
         JSONObject best = null;
         for (int i = 0; i < res.length(); i++) {
             JSONObject o = res.getJSONObject(i);
             String oa = norm(o.optString("artistName"));
             String os = norm(o.optString("trackName"));
-            if (!(oa.contains(na) || na.contains(oa)) || !os.startsWith(ns)) continue;
+            
+            // Overíme, či sa aspoň čiastočne zhodujú
+            if (!(oa.contains(na) || na.contains(oa))) continue;
+            if (!(os.contains(ns) || ns.contains(os))) continue;
+            
             String rd = o.optString("releaseDate", "9999");
             if (best == null || rd.compareTo(bestDate) < 0) {
                 best = o;
@@ -237,6 +253,7 @@ final class TriviaRepository {
 
     /** Záloha: vyhľadá článok o interpretovi podľa mena. */
     private static String wikiSearch(String artist, TrackInfo t) throws Exception {
+        artist = clean(artist);
         String[][] tries = {
                 {"sk", artist + " hudobník skupina spevák"},
                 {"en", artist + " singer band musician"}
@@ -338,6 +355,10 @@ final class TriviaRepository {
 
     private static String norm(String s) {
         return s.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]", "");
+    }
+
+    private static String clean(String s) {
+        return s.replaceAll("\\s*\\([^)]*\\)\\s*", "").replaceAll("\\s*\\[[^]]*\\]\\s*", "").trim();
     }
 
     private static String enc(String s) throws Exception {
