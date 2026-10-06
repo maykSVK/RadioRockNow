@@ -11,11 +11,15 @@ import android.widget.TextView;
 
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
+import android.widget.ProgressBar;
+import android.view.View;
+
 public class MainActivity extends Activity implements NowPlayingMonitor.Listener {
     private TextView songView;
     private TextView artistView;
     private TextView infoView;
     private SwipeRefreshLayout swipe;
+    private ProgressBar loader;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -43,9 +47,14 @@ public class MainActivity extends Activity implements NowPlayingMonitor.Listener
             NowPlayingMonitor.get().refresh();
         });
 
+        loader = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        loader.setIndeterminate(true);
+        loader.setVisibility(View.GONE);
+
         root.addView(head);
         root.addView(songView);
         root.addView(artistView);
+        root.addView(loader, new LinearLayout.LayoutParams(-1, -2));
         root.addView(swipe, new LinearLayout.LayoutParams(-1, 0, 1f));
         root.addView(hint);
         setContentView(root);
@@ -76,6 +85,7 @@ public class MainActivity extends Activity implements NowPlayingMonitor.Listener
     public void onTrackChanged(TrackInfo t) {
         runOnUiThread(() -> {
             if (swipe != null) swipe.setRefreshing(false);
+            if (loader != null) loader.setVisibility(t.triviaDone ? View.GONE : View.VISIBLE);
             songView.setText(t.song);
             artistView.setText(t.artist);
             StringBuilder sb = new StringBuilder();
