@@ -11,8 +11,8 @@ android {
         applicationId "sk.radiorock.now"
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.1"
     }
 
     buildTypes {
@@ -25,3 +25,4 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 }
+

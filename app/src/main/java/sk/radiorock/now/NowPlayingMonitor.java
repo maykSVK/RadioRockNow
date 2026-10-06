@@ -61,11 +61,18 @@ final class NowPlayingMonitor implements IcyReader.Listener {
             artist = raw.substring(i + 3).trim();
         }
         final TrackInfo t = new TrackInfo(song, artist);
+        if (i <= 0) t.triviaDone = true;
         current = t;
         notifyAllListeners(t);
         if (i > 0) {
             executor.execute(() -> {
-                TriviaRepository.fill(t);
+                try {
+                    TriviaRepository.fill(t);
+                } catch (Throwable e) {
+                    t.log("Chyba: " + e);
+                } finally {
+                    t.triviaDone = true;
+                }
                 if (current == t) notifyAllListeners(t);
             });
         }

@@ -67,7 +67,19 @@ public class MainActivity extends Activity implements NowPlayingMonitor.Listener
         runOnUiThread(() -> {
             songView.setText(t.song);
             artistView.setText(t.artist);
-            infoView.setText(t.longText);
+            StringBuilder sb = new StringBuilder();
+            if (!t.shortFacts.isEmpty()) {
+                for (String f : t.shortFacts) sb.append("• ").append(f).append('\n');
+                sb.append('\n');
+            }
+            if (!t.longText.isEmpty()) sb.append(t.longText).append("\n\n");
+            if (!t.triviaDone) sb.append("Načítavam zaujímavosti…");
+            else if (t.longText.isEmpty() && t.shortFacts.isEmpty()) sb.append("Zaujímavosti sa nenašli.");
+            if (t.triviaDone && !t.debug.isEmpty()) {
+                sb.append("\n\nDiagnostika:\n");
+                for (String d : t.debug) sb.append("– ").append(d).append('\n');
+            }
+            infoView.setText(sb.toString());
         });
     }
 }

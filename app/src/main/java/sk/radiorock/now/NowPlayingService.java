@@ -3,9 +3,7 @@ package sk.radiorock.now;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Typeface;
+import android.media.MediaDescription;
 import android.media.MediaMetadata;
 import android.media.browse.MediaBrowser;
 import android.media.session.MediaSession;
@@ -19,43 +17,38 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Mediálna služba pre Android Auto. Nič neprehráva – iba zobrazuje na karte médií
- * aktuálnu skladbu Rádia ROCK, obal albumu a strieda interpreta s krátkymi zaujímavosťami.
- * Dlhé texty sa posúvajú ako bežiaci text.
+ * Mediálna služba pre Android Auto. Nič neprehráva – iba zobrazuje aktuálnu skladbu Rádia ROCK.
+ * <ul>
+ *   <li>Malá karta: názov skladby, interpret, obal (dlhé texty sa posúvajú).</li>
+ *   <li>Veľká obrazovka: zaujímavosti v poli „album" a v zozname (prehliadač médií).</li>
+ * </ul>
  */
 public class NowPlayingService extends MediaBrowserService implements NowPlayingMonitor.Listener {
-    /** Počet znakov, ktoré sa vojdú na kartu v aute. */
+    /** Počet znakov, ktoré sa vojdú na malú kartu v aute. */
     private static final int WIDTH = 22;
     private static final long TICK_MS = 700;
     private static final int STEP = 2;          // znakov na tik pri posúvaní
-    private static final int STATIC_TICKS = 11; // ~8 s pre krátky text
     private static final int PAUSE_TICKS = 3;   // pauza na začiatku posunu
     private static final String GAP = "   •   ";
+    private static final String ROOT = "root";
 
     private MediaSession session;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TrackInfo track;
-    private int factIdx = 0;
-    private int factTicks = 0;
-    private int titleTicks = 0;
+    private int ticks = 0;
 
     private TrackInfo artFor;
     private Bitmap artBitmap;
     private Bitmap fallbackArt;
 
-    private String lastTitle, lastLine;
+    private String lastTitle, lastArtist, lastAlbum;
     private Bitmap lastArt;
 
     private final Runnable tick = new Runnable() {
         @Override
         public void run() {
             if (track != null) {
-                titleTicks++;
-                factTicks++;
-                if (factTicks >= cycleTicks(currentFact())) {
-                    factIdx++;
-                    factTicks = 0;
-                }
+                ticks++;
                 publish();
             }
             handler.postDelayed(this, TICK_MS);
@@ -66,6 +59,7 @@ public class NowPlayingService extends MediaBrowserService implements NowPlaying
     public void onCreate() {
         super.onCreate();
         session = new MediaSession(this, "RadioRockNow");
+        session.setCallback(new MediaSession.Callback() { });
         session.setPlaybackState(new PlaybackState.Builder()
                 .setState(PlaybackState.STATE_PLAYING, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 0f)
                 .setActions(0)
@@ -95,26 +89,11 @@ public class NowPlayingService extends MediaBrowserService implements NowPlaying
     @Override
     public void onTrackChanged(TrackInfo t) {
         handler.post(() -> {
-            if (track != t) {
-                factIdx = 0;
-                factTicks = 0;
-                titleTicks = 0;
-            }
+            if (track != t) ticks = 0;
             track = t;
             publish();
+            notifyChildrenChanged(ROOT);
         });
-    }
-
-    private String currentFact() {
-        List<String> lines = new ArrayList<>();
-        lines.add(track.artist);
-        lines.addAll(track.shortFacts);
-        return lines.get(factIdx % lines.size());
-    }
-
-    private static int cycleTicks(String text) {
-        if (text.length() <= WIDTH) return STATIC_TICKS;
-        return PAUSE_TICKS + (text.length() + GAP.length()) / STEP + 2;
     }
 
     /** Okno textu: krátky text sa nemení, dlhý sa posúva po znakoch. */
@@ -140,23 +119,29 @@ public class NowPlayingService extends MediaBrowserService implements NowPlaying
 
     private void publish() {
         if (track == null) return;
-        String title = window(track.song, titleTicks);
-        String line = window(currentFact(), factTicks);
+        String title = window(track.song, ticks);
+        String artist = window(track.artist, ticks);
+        String facts = track.factsLine();
+        String album = facts.isEmpty() ? "Rádio ROCK" : facts;
         Bitmap art = art();
-        if (title.equals(lastTitle) && line.equals(lastLine) && art == lastArt) return;
+        if (title.equals(lastTitle) && artist.equals(lastArtist) && album.equals(lastAlbum) && art == lastArt) return;
         lastTitle = title;
-        lastLine = line;
+        lastArtist = artist;
+        lastAlbum = album;
         lastArt = art;
-        session.setMetadata(new MediaMetadata.Builder()
+        MediaMetadata.Builder b = new MediaMetadata.Builder()
                 .putString(MediaMetadata.METADATA_KEY_TITLE, title)
-                .putString(MediaMetadata.METADATA_KEY_ARTIST, line)
-                .putString(MediaMetadata.METADATA_KEY_ALBUM, "Rádio ROCK")
+                .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
+                .putString(MediaMetadata.METADATA_KEY_ALBUM, album)
                 .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
-                .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, line)
+                .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, artist)
                 .putLong(MediaMetadata.METADATA_KEY_DURATION, -1)
                 .putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, art)
-                .putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, art)
-                .build());
+                .putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, art);
+        if (track.wikiText != null) {
+            b.putString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION, track.wikiText);
+        }
+        session.setMetadata(b.build());
     }
 
     private Bitmap makeFallbackArt() {
@@ -170,11 +155,31 @@ public class NowPlayingService extends MediaBrowserService implements NowPlaying
 
     @Override
     public BrowserRoot onGetRoot(String clientPackageName, int clientUid, Bundle rootHints) {
-        return new BrowserRoot("root", null);
+        return new BrowserRoot(ROOT, null);
     }
 
+    /** Zoznam zaujímavostí o aktuálnej skladbe (zobrazí sa po otvorení aplikácie v aute). */
     @Override
     public void onLoadChildren(String parentId, Result<List<MediaBrowser.MediaItem>> result) {
-        result.sendResult(new ArrayList<>());
+        List<MediaBrowser.MediaItem> items = new ArrayList<>();
+        TrackInfo t = track != null ? track : NowPlayingMonitor.get().current();
+        if (t == null) {
+            items.add(item("wait", "Čakám na skladbu…", ""));
+        } else {
+            int i = 0;
+            for (String[] row : t.detailItems()) {
+                items.add(item("d" + (i++), row[0], row[1]));
+            }
+        }
+        result.sendResult(items);
+    }
+
+    private static MediaBrowser.MediaItem item(String id, String title, String subtitle) {
+        MediaDescription d = new MediaDescription.Builder()
+                .setMediaId(id)
+                .setTitle(title)
+                .setSubtitle(subtitle.isEmpty() ? null : subtitle)
+                .build();
+        return new MediaBrowser.MediaItem(d, MediaBrowser.MediaItem.FLAG_PLAYABLE);
     }
 }
