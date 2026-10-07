@@ -26,9 +26,9 @@ import java.util.List;
 public class NowPlayingService extends MediaBrowserService implements NowPlayingMonitor.Listener {
     /** Počet znakov, ktoré sa vojdú na malú kartu v aute. */
     private static final int WIDTH = 22;
-    private static final long TICK_MS = 700;
-    private static final int STEP = 2;          // znakov na tik pri posúvaní
-    private static final int PAUSE_TICKS = 3;   // pauza na začiatku posunu
+    private static final long TICK_MS = 250;
+    private static final int STEP = 1;          // znakov na tik pri posúvaní
+    private static final int PAUSE_TICKS = 8;   // pauza na začiatku posunu
     private static final String GAP = "   •   ";
     private static final String ROOT = "root";
 
@@ -66,13 +66,16 @@ public class NowPlayingService extends MediaBrowserService implements NowPlaying
                     NowPlayingMonitor.get().refresh();
                 }
             }
+            @Override
+            public void onPlayFromMediaId(String mediaId, Bundle extras) {
+                if ("REFRESH".equals(mediaId)) {
+                    NowPlayingMonitor.get().refresh();
+                }
+            }
         });
-        PlaybackState.CustomAction refreshAction = new PlaybackState.CustomAction.Builder(
-                "REFRESH", "Obnoviť", android.R.drawable.ic_popup_sync).build();
         session.setPlaybackState(new PlaybackState.Builder()
                 .setState(PlaybackState.STATE_PLAYING, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 0f)
                 .setActions(0)
-                .addCustomAction(refreshAction)
                 .build());
         fallbackArt = makeFallbackArt();
         session.setMetadata(new MediaMetadata.Builder()
@@ -172,6 +175,7 @@ public class NowPlayingService extends MediaBrowserService implements NowPlaying
     @Override
     public void onLoadChildren(String parentId, Result<List<MediaBrowser.MediaItem>> result) {
         List<MediaBrowser.MediaItem> items = new ArrayList<>();
+        items.add(item("REFRESH", "Obnoviť", ""));
         TrackInfo t = track != null ? track : NowPlayingMonitor.get().current();
         if (t == null) {
             items.add(item("wait", "Čakám na skladbu…", ""));
